@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Drop &mdash; Endpoint Test</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0b0b0d; color: #fff;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  min-height: 100vh; padding: 28px 16px;
+  display: flex; flex-direction: column; align-items: center;
+}
+.wrap { width: 100%; max-width: 620px; }
+h1 { font-size: 21px; font-weight: 800; }
+.brand { color: #FE5000; }
+.lede { font-size: 13px; color: rgba(255,255,255,0.45); margin: 8px 0 20px; line-height: 1.6; }
+label { display: block; font-size: 10px; font-weight: 800; letter-spacing: 1.2px;
+        color: rgba(255,255,255,0.4); margin-bottom: 5px; }
+input {
+  width: 100%; background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 7px;
+  color: #fff; font-size: 13px; font-family: inherit;
+  padding: 10px 11px; outline: none; margin-bottom: 15px;
+}
+input:focus { border-color: rgba(254,80,0,0.6); }
+button {
+  width: 100%; background: #FE5000; color: #fff; border: none; border-radius: 7px;
+  padding: 12px 0; font-family: inherit; font-size: 13px; font-weight: 800;
+  letter-spacing: 0.5px; cursor: pointer; margin-bottom: 18px;
+}
+button:disabled { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.3); cursor: default; }
+.row {
+  display: flex; align-items: flex-start; gap: 10px;
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+  padding: 11px 12px; margin-bottom: 9px; font-size: 13px;
+}
+.row .tag { font-weight: 800; letter-spacing: 0.5px; min-width: 76px; }
+.row .msg { color: rgba(255,255,255,0.5); font-size: 12px; line-height: 1.55;
+            word-break: break-all; flex: 1; }
+.row.pass { border-color: rgba(46,160,67,0.5);  background: rgba(46,160,67,0.08); }
+.row.pass .tag { color: #2EA043; }
+.row.fail { border-color: rgba(198,40,40,0.5);  background: rgba(198,40,40,0.08); }
+.row.fail .tag { color: #FF6B6B; }
+.row.wait { border-color: rgba(255,255,255,0.12); }
+.row.wait .tag { color: rgba(255,255,255,0.4); }
+.verdict { margin-top: 16px; font-size: 14px; line-height: 1.6; padding: 13px 14px;
+           border-radius: 8px; display: none; }
+.verdict.on { display: block; }
+.verdict.good { background: rgba(46,160,67,0.12); border: 1px solid rgba(46,160,67,0.4); color: #7EE2A0; }
+.verdict.bad  { background: rgba(198,40,40,0.12); border: 1px solid rgba(198,40,40,0.4); color: #FF9D9D; }
+.note { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 20px; line-height: 1.7; }
+code { background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="brand">Task Drop</span> &mdash; endpoint test</h1>
+  <p class="lede">
+    Runs the same three transports the R1 app uses, in the same order, and tells you
+    which ones your Apps Script deployment accepts. Each passing test writes one row
+    to your sheet.
+  </p>
+
+  <label>Apps Script web app URL (ends in /exec)</label>
+  <input id="url" type="url" spellcheck="false"
+         placeholder="https://script.google.com/macros/s/AKfy.../exec">
+
+  <label>Shared key</label>
+  <input id="key" type="text" spellcheck="false" placeholder="your secret key">
+
+  <label>Test note text</label>
+  <input id="note" type="text" value="Endpoint test from browser">
+
+  <button id="go">Run all three</button>
+
+  <div id="r-post"   class="row wait"><span class="tag">POST</span><span class="msg">not run</span></div>
+  <div id="r-get"    class="row wait"><span class="tag">GET</span><span class="msg">not run</span></div>
+  <div id="r-nocors" class="row wait"><span class="tag">NO-CORS</span><span class="msg">not run</span></div>
+  <div id="r-badkey" class="row wait"><span class="tag">BAD KEY</span><span class="msg">not run</span></div>
+
+  <div class="verdict" id="verdict"></div>
+
+  <p class="note">
+    Serve this page over <code>http://localhost</code> rather than opening the file
+    directly &mdash; a <code>file://</code> page has a null origin and some browsers
+    treat it differently from the R1 WebView. From the repo folder:
+    <code>python -m http.server 8080</code>, then open
+    <code>http://localhost:8080/endpoint-test.html</code>.
+  </p>
+  <p class="note">
+    <strong>BAD KEY</strong> is the one test that should fail. If it passes, your Apps
+    Script is not checking the key and anyone with the URL can write to your sheet.
+  </p>
+</div>
+
+<script>
+var $ = function(id) { return document.getElementById(id); };
+
+function setRow(id, state, msg) {
+  var el = $(id);
+  el.className = 'row ' + state;
+  el.querySelector('.msg').textContent = msg;
+}
+
+function looksOk(text) {
+  if (!text) return false;
+  try { var o = JSON.parse(text); if (o && o.ok === true) return true; } catch (e) {}
+  return /"ok"\s*:\s*true/.test(text);
+}
+
+function short(s) {
+  s = String(s || '').replace(/\s+/g, ' ').trim();
+  return s.length > 220 ? s.slice(0, 220) + '…' : s;
+}
+
+// Simple POST: no custom headers, so no CORS preflight.
+function testPost(url, key, note) {
+  return fetch(url, {
+    method: 'POST',
+    body: JSON.stringify({ key: key, note: note, source: 'R1' }),
+    redirect: 'follow',
+    cache: 'no-store'
+  })
+  .then(function(res) {
+    return res.text().then(function(text) {
+      return { ok: looksOk(text), msg: 'HTTP ' + res.status + ' — ' + short(text) };
+    });
+  })
+  .catch(function(e) { return { ok: false, msg: 'blocked: ' + (e && e.message || e) }; });
+}
+
+function testGet(url, key, note) {
+  var full = url + (url.indexOf('?') === -1 ? '?' : '&')
+    + 'key=' + encodeURIComponent(key)
+    + '&note=' + encodeURIComponent(note)
+    + '&source=R1';
+  return fetch(full, { method: 'GET', redirect: 'follow', cache: 'no-store' })
+    .then(function(res) {
+      return res.text().then(function(text) {
+        return { ok: looksOk(text), msg: 'HTTP ' + res.status + ' — ' + short(text) };
+      });
+    })
+    .catch(function(e) { return { ok: false, msg: 'blocked: ' + (e && e.message || e) }; });
+}
+
+// Opaque. Cannot be verified from here - check the sheet by hand.
+function testNoCors(url, key, note) {
+  return fetch(url, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: JSON.stringify({ key: key, note: note, source: 'R1' }),
+    cache: 'no-store'
+  })
+  .then(function() {
+    return { ok: true, msg: 'request left the browser (opaque response — confirm the row in your sheet)' };
+  })
+  .catch(function(e) { return { ok: false, msg: 'failed: ' + (e && e.message || e) }; });
+}
+
+$('go').addEventListener('click', function() {
+  var url  = $('url').value.trim();
+  var key  = $('key').value.trim();
+  var note = $('note').value.trim() || 'Endpoint test from browser';
+  var v = $('verdict');
+  v.className = 'verdict';
+
+  if (url.indexOf('/exec') === -1) {
+    v.className = 'verdict on bad';
+    v.textContent = 'That URL must end in /exec. A /dev URL only works while you are signed in.';
+    return;
+  }
+
+  $('go').disabled = true;
+  ['r-post', 'r-get', 'r-nocors', 'r-badkey'].forEach(function(id) {
+    setRow(id, 'wait', 'running…');
+  });
+
+  var stamp = new Date().toLocaleTimeString();
+  var results = {};
+
+  testPost(url, key, note + ' [POST ' + stamp + ']')
+    .then(function(r) {
+      results.post = r.ok; setRow('r-post', r.ok ? 'pass' : 'fail', r.msg);
+      return testGet(url, key, note + ' [GET ' + stamp + ']');
+    })
+    .then(function(r) {
+      results.get = r.ok; setRow('r-get', r.ok ? 'pass' : 'fail', r.msg);
+      return testNoCors(url, key, note + ' [NO-CORS ' + stamp + ']');
+    })
+    .then(function(r) {
+      results.nocors = r.ok; setRow('r-nocors', r.ok ? 'pass' : 'fail', r.msg);
+      return testPost(url, 'definitely-not-the-key', 'SHOULD NOT APPEAR [' + stamp + ']');
+    })
+    .then(function(r) {
+      // Inverted: we want this rejected.
+      results.badkey = !r.ok;
+      setRow('r-badkey', r.ok ? 'fail' : 'pass',
+        r.ok ? 'ACCEPTED a wrong key — your script is not validating it'
+             : 'correctly rejected — ' + r.msg);
+    })
+    .then(function() {
+      $('go').disabled = false;
+      if (results.post || results.get) {
+        v.className = 'verdict on good';
+        v.textContent = 'Working. The R1 app will use '
+          + (results.post ? 'POST' : 'GET')
+          + ' and can confirm delivery. Check your sheet for the new rows'
+          + (results.badkey ? '' : ' — and fix the key check before you use this for real')
+          + '.';
+      } else if (results.nocors) {
+        v.className = 'verdict on bad';
+        v.textContent = 'Only the no-cors fallback got through, so the app cannot read a '
+          + 'confirmation and will treat sends as fire-and-forget. Re-deploy the web app '
+          + 'with access set to "Anyone" and try again.';
+      } else {
+        v.className = 'verdict on bad';
+        v.textContent = 'Nothing got through. Check the deployment is a web app, executing '
+          + 'as you, with access set to "Anyone", and that the URL ends in /exec.';
+      }
+    });
+});
+</script>
+</body>
+</html>

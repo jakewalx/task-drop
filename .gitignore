@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Never commit a configured endpoint or key.
+config.local.*
+*.secret
+secrets.*

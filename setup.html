@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Drop &mdash; Config QR</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0b0b0d; color: #fff;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  min-height: 100vh; padding: 28px 16px;
+  display: flex; flex-direction: column; align-items: center;
+}
+.wrap { width: 100%; max-width: 520px; }
+h1 { font-size: 21px; font-weight: 800; letter-spacing: -0.2px; }
+.brand { color: #FE5000; }
+.lede { font-size: 13px; color: rgba(255,255,255,0.45); margin: 8px 0 20px; line-height: 1.6; }
+.warn {
+  background: rgba(224,168,0,0.1); border: 1px solid rgba(224,168,0,0.35);
+  border-radius: 8px; padding: 11px 13px; margin-bottom: 20px;
+  font-size: 12px; line-height: 1.6; color: #F0CE7A;
+}
+label { display: block; font-size: 10px; font-weight: 800; letter-spacing: 1.2px;
+        color: rgba(255,255,255,0.4); margin-bottom: 5px; }
+input {
+  width: 100%; background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 7px;
+  color: #fff; font-size: 13px; font-family: inherit;
+  padding: 10px 11px; outline: none; margin-bottom: 15px;
+}
+input:focus { border-color: rgba(254,80,0,0.6); }
+button {
+  width: 100%; background: #FE5000; color: #fff; border: none; border-radius: 7px;
+  padding: 12px 0; font-family: inherit; font-size: 13px; font-weight: 800;
+  letter-spacing: 0.5px; cursor: pointer;
+}
+button:disabled { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.3); cursor: default; }
+#out { margin-top: 26px; display: none; flex-direction: column; align-items: center; }
+#out.on { display: flex; }
+#qr { background: #0b0b0d; border-radius: 10px; margin-bottom: 16px; }
+.cap { font-size: 12px; color: rgba(255,255,255,0.4); text-align: center; line-height: 1.6; }
+.err { font-size: 12px; color: #FF6B6B; min-height: 16px; margin-bottom: 10px; }
+details { margin-top: 26px; font-size: 12px; color: rgba(255,255,255,0.35); line-height: 1.7; }
+summary { cursor: pointer; color: rgba(255,255,255,0.5); font-weight: 700; margin-bottom: 8px; }
+code { background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 4px;
+       font-size: 11px; word-break: break-all; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="brand">Task Drop</span> &mdash; config QR</h1>
+  <p class="lede">
+    Builds the one-time QR that hands your endpoint to the R1. Scan it instead of
+    typing a long URL on the device keyboard.
+  </p>
+
+  <div class="warn">
+    <strong>This QR contains your key.</strong> Everything here runs in your browser &mdash;
+    nothing is uploaded and nothing is saved. Don&rsquo;t screenshot it into a shared
+    album, don&rsquo;t commit it, and close this tab when you&rsquo;re done.
+  </div>
+
+  <label>Creation URL (your GitHub Pages address)</label>
+  <input id="base" type="url" spellcheck="false"
+         placeholder="https://USERNAME.github.io/task-drop/">
+
+  <label>Apps Script web app URL (ends in /exec)</label>
+  <input id="url" type="url" spellcheck="false"
+         placeholder="https://script.google.com/macros/s/AKfy.../exec">
+
+  <label>Shared key</label>
+  <input id="key" type="text" spellcheck="false" placeholder="your secret key">
+
+  <div class="err" id="err"></div>
+  <button id="go">Build QR</button>
+
+  <div id="out">
+    <div id="qr"></div>
+    <p class="cap">
+      Scan with your R1. Task Drop installs, reads the config, saves it to secure
+      storage, then strips it from the URL.
+    </p>
+  </div>
+
+  <details>
+    <summary>How this works / if the scan doesn&rsquo;t carry the config</summary>
+    <p>
+      The QR holds the R1 install-card JSON. Its <code>url</code> is your creation
+      plus a fragment: <code>#cfg=&lt;base64 of {"u":"&lt;exec url&gt;","k":"&lt;key&gt;"}&gt;</code>.
+      On first load Task Drop reads that fragment, writes it to
+      <code>creationStorage.secure</code>, and calls
+      <code>history.replaceState</code> so the key is no longer in the address.
+    </p>
+    <p>
+      If your R1 firmware drops the fragment when it installs the card, nothing is
+      lost &mdash; open Task Drop, touch and hold the screen for a second, and type the
+      URL and key into the setup screen directly.
+    </p>
+  </details>
+</div>
+
+<script src="https://unpkg.com/qr-code-styling@1.6.0/lib/qr-code-styling.js"></script>
+<script>
+var $ = function(id) { return document.getElementById(id); };
+var qrCode = null;
+
+function b64url(str) {
+  return btoa(unescape(encodeURIComponent(str)))
+    .replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+$('go').addEventListener('click', function() {
+  var base = $('base').value.trim();
+  var url  = $('url').value.trim();
+  var key  = $('key').value.trim();
+  $('err').textContent = '';
+
+  if (!/^https:\/\/.+/i.test(base)) { $('err').textContent = 'Creation URL must start with https://'; return; }
+  if (url.indexOf('/exec') === -1)  { $('err').textContent = 'The Apps Script URL must end in /exec'; return; }
+  if (!key)                         { $('err').textContent = 'Enter the shared key.'; return; }
+
+  // Strip any existing fragment, then attach the config.
+  base = base.split('#')[0];
+  var creationUrl = base + '#cfg=' + b64url(JSON.stringify({ u: url, k: key }));
+
+  var payload = JSON.stringify({
+    title: 'Task Drop',
+    url: creationUrl,
+    description: 'Voice note straight into my Google Sheet',
+    iconUrl: '',
+    themeColor: '#FE5000'
+  });
+
+  if (typeof QRCodeStyling === 'undefined') {
+    $('err').textContent = 'QR library did not load. Check your connection and reload.';
+    return;
+  }
+
+  $('qr').innerHTML = '';
+  qrCode = new QRCodeStyling({
+    width: 300, height: 300,
+    data: payload,
+    margin: 8,
+    qrOptions: { errorCorrectionLevel: 'M' },
+    dotsOptions: { color: '#ffffff', type: 'rounded' },
+    backgroundOptions: { color: '#0b0b0d' },
+    cornersSquareOptions: { color: '#FE5000', type: 'extra-rounded' },
+    cornersDotOptions: { color: '#FE5000' }
+  });
+  qrCode.append($('qr'));
+  $('out').classList.add('on');
+});
+</script>
+</body>
+</html>

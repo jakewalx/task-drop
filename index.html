@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=240,height=282,user-scalable=no">
+<title>Task Drop</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 240px; height: 282px; overflow: hidden;
+  background: #0b0b0d; color: #fff;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.screen {
+  display: none; position: absolute; inset: 0;
+  flex-direction: column; background: #0b0b0d;
+}
+.screen.visible { display: flex; }
+
+/* -- Top bar -- */
+#topbar {
+  height: 26px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+#brand { font-size: 10px; font-weight: 800; letter-spacing: 2px; color: #FE5000; }
+#queue-badge {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.5px;
+  color: #FFB27A; background: rgba(254,80,0,0.14);
+  border: 1px solid rgba(254,80,0,0.3);
+  border-radius: 9px; padding: 2px 7px; opacity: 0;
+}
+#queue-badge.on { opacity: 1; }
+
+/* -- Idle body -- */
+.body-center {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+}
+#mic-ring {
+  width: 86px; height: 86px; border-radius: 50%;
+  border: 2px solid rgba(254,80,0,0.35);
+  background: rgba(254,80,0,0.06);
+  display: flex; align-items: center; justify-content: center;
+}
+#mic-ring svg { width: 36px; height: 36px; }
+#idle-main { font-size: 15px; font-weight: 800; letter-spacing: 1px; color: #fff; }
+#idle-sub  { font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 0.4px; }
+
+/* -- Bottom bar -- */
+#bottombar {
+  height: 24px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.tiny { font-size: 8px; color: rgba(255,255,255,0.22); letter-spacing: 0.3px; }
+#last-method { color: rgba(254,80,0,0.5); font-weight: 700; }
+
+/* -- Listening -- */
+#listen-ring {
+  width: 92px; height: 92px; border-radius: 50%;
+  border: 2px solid rgba(254,80,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  animation: pulse 1s ease-in-out infinite;
+}
+#listen-dot { width: 26px; height: 26px; border-radius: 50%; background: #FE5000; }
+@keyframes pulse {
+  0%,100% { transform: scale(1);    box-shadow: 0 0 0 0  rgba(254,80,0,0.35); }
+  50%     { transform: scale(1.09); box-shadow: 0 0 0 12px rgba(254,80,0,0); }
+}
+#listen-label { font-size: 13px; font-weight: 800; letter-spacing: 3px; color: #fff; }
+
+/* -- Review -- */
+#review-head {
+  height: 24px; flex-shrink: 0; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 10px;
+}
+#review-title { font-size: 9px; font-weight: 800; letter-spacing: 2px; color: rgba(255,255,255,0.35); }
+#note-text {
+  flex: 1; margin: 0 8px 6px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 7px; color: #fff;
+  font-size: 15px; font-family: inherit; line-height: 1.45;
+  padding: 7px 8px; resize: none; outline: none;
+  -webkit-user-select: text; user-select: text;
+}
+#note-text:focus { border-color: rgba(254,80,0,0.55); background: rgba(254,80,0,0.05); }
+#actions { display: flex; gap: 4px; padding: 0 8px 8px; flex-shrink: 0; }
+.act {
+  flex: 1; text-align: center; padding: 8px 0; border-radius: 7px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.6px;
+  background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.4);
+  border: 1px solid transparent;
+}
+.act.sel { background: #FE5000; color: #fff; border-color: #FE5000; }
+.act.sel#act-discard { background: #C62828; border-color: #C62828; }
+
+/* -- Result (tick / fail) -- */
+#result-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+#tick-wrap { width: 108px; height: 108px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+#tick-wrap.ok   { background: rgba(46,160,67,0.14); border: 3px solid #2EA043; }
+#tick-wrap.warn { background: rgba(224,168,0,0.14); border: 3px solid #E0A800; }
+#tick {
+  width: 54px; height: 28px;
+  border-left: 8px solid #2EA043; border-bottom: 8px solid #2EA043;
+  transform: rotate(-45deg) translate(2px,-6px); border-radius: 2px;
+}
+#tick-wrap.warn #tick { border-color: #E0A800; }
+#result-label { font-size: 15px; font-weight: 800; letter-spacing: 1.5px; }
+#result-sub { font-size: 9px; color: rgba(255,255,255,0.3); text-align: center; padding: 0 16px; line-height: 1.5; }
+
+/* -- Setup -- */
+#setup-head { font-size: 10px; font-weight: 800; letter-spacing: 2px; color: #FE5000; padding: 9px 10px 6px; flex-shrink: 0; }
+#setup-body { flex: 1; overflow-y: auto; padding: 0 10px; }
+.field-label { font-size: 8px; font-weight: 800; letter-spacing: 1.2px; color: rgba(255,255,255,0.35); margin-bottom: 3px; }
+.field {
+  width: 100%; background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14); border-radius: 6px;
+  color: #fff; font-size: 11px; font-family: inherit;
+  padding: 7px; outline: none; margin-bottom: 9px;
+  -webkit-user-select: text; user-select: text;
+}
+.field:focus { border-color: rgba(254,80,0,0.6); }
+#setup-note { font-size: 8px; color: rgba(255,255,255,0.25); line-height: 1.55; margin-bottom: 8px; }
+#setup-foot { flex-shrink: 0; display: flex; gap: 5px; padding: 0 10px 9px; }
+#setup-foot div {
+  flex: 1; text-align: center; padding: 8px 0; border-radius: 6px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.6px;
+}
+#setup-save   { background: #FE5000; color: #fff; }
+#setup-cancel { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.4); }
+#setup-err { font-size: 8px; color: #FF6B6B; padding: 0 10px 4px; min-height: 11px; flex-shrink: 0; }
+
+/* -- Toast -- */
+#toast {
+  position: absolute; left: 10px; right: 10px; bottom: 30px; z-index: 500;
+  background: rgba(20,20,24,0.96); border: 1px solid rgba(254,80,0,0.35);
+  border-radius: 7px; padding: 7px 9px;
+  font-size: 9px; line-height: 1.45; color: rgba(255,255,255,0.75);
+  opacity: 0; transition: opacity 0.2s; pointer-events: none;
+}
+#toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- == IDLE == -->
+<div class="screen visible" id="screen-idle">
+  <div id="topbar">
+    <span id="brand">TASK DROP</span>
+    <span id="queue-badge">0 QUEUED</span>
+  </div>
+  <div class="body-center" id="idle-body">
+    <div id="mic-ring">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#FE5000" stroke-width="1.8" stroke-linecap="round">
+        <rect x="9" y="2.5" width="6" height="11" rx="3"></rect>
+        <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"></path>
+        <path d="M12 18v3.2M8.6 21.2h6.8"></path>
+      </svg>
+    </div>
+    <div id="idle-main">HOLD TO TALK</div>
+    <div id="idle-sub">release to transcribe</div>
+  </div>
+  <div id="bottombar">
+    <span class="tiny">hold screen &middot; setup</span>
+    <span class="tiny" id="last-method"></span>
+  </div>
+</div>
+
+<!-- == LISTENING == -->
+<div class="screen" id="screen-listen">
+  <div class="body-center" id="listen-body">
+    <div id="listen-ring"><div id="listen-dot"></div></div>
+    <div id="listen-label">LISTENING</div>
+    <div class="tiny">release to stop</div>
+  </div>
+</div>
+
+<!-- == REVIEW == -->
+<div class="screen" id="screen-review">
+  <div id="review-head">
+    <span id="review-title">REVIEW</span>
+    <span class="tiny" id="review-hint">scroll &middot; pick</span>
+  </div>
+  <textarea id="note-text" spellcheck="false"></textarea>
+  <div id="actions">
+    <div class="act sel" id="act-send">SEND</div>
+    <div class="act" id="act-edit">EDIT</div>
+    <div class="act" id="act-discard">DISCARD</div>
+  </div>
+</div>
+
+<!-- == RESULT == -->
+<div class="screen" id="screen-result">
+  <div id="result-body">
+    <div id="tick-wrap" class="ok"><div id="tick"></div></div>
+    <div id="result-label">SENT</div>
+    <div id="result-sub"></div>
+  </div>
+</div>
+
+<!-- == SETUP == -->
+<div class="screen" id="screen-setup">
+  <div id="setup-head">SETUP</div>
+  <div id="setup-body">
+    <div class="field-label">APPS SCRIPT URL</div>
+    <input class="field" id="in-url" type="url" inputmode="url" autocapitalize="off"
+           autocomplete="off" spellcheck="false" placeholder="https://script.google.com/.../exec">
+    <div class="field-label">SHARED KEY</div>
+    <input class="field" id="in-key" type="text" autocapitalize="off"
+           autocomplete="off" spellcheck="false" placeholder="your secret key">
+    <div id="setup-note">
+      Tap a field to type. Stored in the R1 secure storage &mdash; never in the app code.
+      You can also load both by scanning a config QR built with setup.html.
+    </div>
+  </div>
+  <div id="setup-err"></div>
+  <div id="setup-foot">
+    <div id="setup-cancel">BACK</div>
+    <div id="setup-save">SAVE</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ====================================================================
+   Task Drop - voice note -> Google Apps Script -> Google Sheet
+   Single-file creation for the Rabbit R1 (240x282 WebView).
+   ==================================================================== */
+
+// -- Keys & tunables --------------------------------------------------
+var CFG_KEY    = 'taskdrop_cfg';     // secure storage slot (base64 JSON)
+var QUEUE_KEY  = 'taskdrop_queue';   // localStorage: pending notes
+var METHOD_KEY = 'taskdrop_method';  // localStorage: last transport that worked
+var RETRY_MS   = 60000;              // retry sweep while the app is open
+var MAX_NOTE   = 1800;               // keeps the GET fallback inside URL limits
+
+// -- State ------------------------------------------------------------
+var cfg         = null;   // { url, key }
+var queue       = [];     // [{ id, note, ts, tries }]
+var screenName  = 'idle';
+var isListening = false;
+var flushPromise = null;  // in-flight flush, shared by callers
+var suppressPTT = false;  // set when a long press was consumed as "discard"
+var actions     = ['send', 'edit', 'discard'];
+var actionIdx   = 0;
+var editing     = false;
+var toastTimer  = null;
+var resultTimer = null;
+var holdTimer   = null;
+var lastDetail  = '';   // why the last attempt did not land
+
+// -- Elements ---------------------------------------------------------
+var $ = function(id) { return document.getElementById(id); };
+var screens = {
+  idle:   $('screen-idle'),
+  listen: $('screen-listen'),
+  review: $('screen-review'),
+  result: $('screen-result'),
+  setup:  $('screen-setup')
+};
+var $badge  = $('queue-badge');
+var $note   = $('note-text');
+var $toast  = $('toast');
+var $method = $('last-method');
+
+// -- Screen switching -------------------------------------------------
+function show(name) {
+  for (var k in screens) screens[k].classList.toggle('visible', k === name);
+  screenName = name;
+}
+
+function toast(msg, ms) {
+  $toast.textContent = msg;
+  $toast.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { $toast.classList.remove('on'); }, ms || 2600);
+}
+
+// -- Base64 helpers (UTF-8 safe) --------------------------------------
+function b64enc(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function b64dec(str) {
+  return decodeURIComponent(escape(atob(String(str).replace(/-/g, '+').replace(/_/g, '/'))));
+}
+
+// -- Config: secure storage, with localStorage fallback off-device ----
+function hasSecureStore() {
+  return !!(window.creationStorage && window.creationStorage.secure);
+}
+
+function saveCfg(next) {
+  cfg = next;
+  var payload = b64enc(JSON.stringify(next));
+  if (hasSecureStore()) {
+    return Promise.resolve(window.creationStorage.secure.setItem(CFG_KEY, payload))
+      .catch(function() { try { localStorage.setItem(CFG_KEY, payload); } catch (e) {} });
+  }
+  // Desktop / browser testing only - no secure store is injected there.
+  try { localStorage.setItem(CFG_KEY, payload); } catch (e) {}
+  return Promise.resolve();
+}
+
+function loadCfg() {
+  function parse(raw) {
+    if (!raw) return null;
+    try {
+      var o = JSON.parse(b64dec(raw));
+      return (o && o.url) ? { url: o.url, key: o.key || '' } : null;
+    } catch (e) { return null; }
+  }
+  if (hasSecureStore()) {
+    return Promise.resolve(window.creationStorage.secure.getItem(CFG_KEY))
+      .then(parse)
+      .catch(function() { return null; })
+      .then(function(c) {
+        if (c) return c;
+        try { return parse(localStorage.getItem(CFG_KEY)); } catch (e) { return null; }
+      });
+  }
+  try { return Promise.resolve(parse(localStorage.getItem(CFG_KEY))); }
+  catch (e) { return Promise.resolve(null); }
+}
+
+// Config handed in by the install QR: #cfg=<base64url of {"u":...,"k":...}>
+function configFromHash() {
+  var m = /[#&]cfg=([^&]+)/.exec(location.hash || '');
+  if (!m) return null;
+  try {
+    var o = JSON.parse(b64dec(decodeURIComponent(m[1])));
+    if (!o || !o.u) return null;
+    return { url: String(o.u), key: String(o.k || '') };
+  } catch (e) { return null; }
+}
+
+function stripHash() {
+  try {
+    history.replaceState(null, '', location.pathname + location.search);
+  } catch (e) {
+    location.hash = '';
+  }
+}
+
+// -- Queue: persisted before any network attempt ----------------------
+function loadQueue() {
+  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]') || []; }
+  catch (e) { return []; }
+}
+function persistQueue() {
+  try { localStorage.setItem(QUEUE_KEY, JSON.stringify(queue)); } catch (e) {}
+  // Mirror into plain SDK storage so the queue survives a reinstall.
+  if (window.creationStorage && window.creationStorage.plain) {
+    try { window.creationStorage.plain.setItem(QUEUE_KEY, b64enc(JSON.stringify(queue))); } catch (e) {}
+  }
+  renderBadge();
+}
+function renderBadge() {
+  var n = queue.length;
+  $badge.textContent = n + ' QUEUED';
+  $badge.classList.toggle('on', n > 0);
+}
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function setMethod(m) {
+  if (!m) return;
+  try { localStorage.setItem(METHOD_KEY, m); } catch (e) {}
+  renderMethod(m);
+}
+function renderMethod(m) {
+  if (!m) { try { m = localStorage.getItem(METHOD_KEY) || ''; } catch (e) { m = ''; } }
+  $method.textContent = m ? ('via ' + m) : '';
+}
+
+// -- Speech output ----------------------------------------------------
+// PluginMessageHandler is the only speech path the SDK exposes and it
+// routes through the R1 LLM, so the wording is pinned down hard.
+function say(text) {
+  if (typeof PluginMessageHandler !== 'undefined') {
+    try {
+      PluginMessageHandler.postMessage(JSON.stringify({
+        message: 'Say exactly this and nothing else, no preamble: "' + text + '"',
+        useLLM: true,
+        wantsR1Response: true
+      }));
+      return;
+    } catch (e) {}
+  }
+  // Desktop fallback so the browser test is audible too.
+  try {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    }
+  } catch (e) {}
+}
+
+// -- Transport --------------------------------------------------------
+// Apps Script answers no CORS preflight, so the POST must stay a
+// "simple request": no custom headers at all. fetch then labels the
+// body text/plain, which Apps Script still reads via e.postData.contents.
+function looksOk(text) {
+  if (!text) return false;
+  try {
+    var o = JSON.parse(text);
+    if (o && o.ok === true) return true;
+  } catch (e) {}
+  return /"ok"\s*:\s*true/.test(text);
+}
+
+function getUrl(item) {
+  return cfg.url
+    + (cfg.url.indexOf('?') === -1 ? '?' : '&')
+    + 'key=' + encodeURIComponent(cfg.key)
+    + '&note=' + encodeURIComponent(item.note)
+    + '&source=R1';
+}
+
+function bodyFor(item) {
+  return JSON.stringify({ key: cfg.key, note: item.note, source: 'R1' });
+}
+
+// Attempt one transport. Resolves to:
+//   { state: 'sent',     method }  delivered and confirmed
+//   { state: 'rejected', detail }  the server answered and refused us
+//   { state: 'blocked',  detail }  CORS or network - we never heard back
+function attempt(opts) {
+  return fetch(opts.url, opts.init)
+    .then(function(res) {
+      return res.text().then(function(text) {
+        if (looksOk(text)) return { state: 'sent', method: opts.name };
+        return { state: 'rejected', detail: 'HTTP ' + res.status };
+      });
+    })
+    .catch(function(e) {
+      return { state: 'blocked', detail: (e && e.message) || String(e) };
+    });
+}
+
+// Resolves to the transport name that worked, or null.
+//
+// The order matters, and so does the distinction between "blocked" and
+// "rejected". If the endpoint answered and refused us - a wrong key, an empty
+// note - the note must stay queued, so we stop. Only a request that never got
+// through earns the next fallback. Firing a blind no-cors POST at a server that
+// just said no would dequeue a note that was never written.
+function deliver(item) {
+  if (!cfg || !cfg.url) return Promise.resolve(null);
+
+  // 1) Simple POST, no headers, follow the one Apps Script redirect.
+  return attempt({
+    name: 'POST',
+    url: cfg.url,
+    init: { method: 'POST', body: bodyFor(item), redirect: 'follow', cache: 'no-store' }
+  })
+
+    // 2) GET fallback - same endpoint, values on the query string.
+    .then(function(r) {
+      if (r.state !== 'blocked') return r;
+      return attempt({
+        name: 'GET',
+        url: getUrl(item),
+        init: { method: 'GET', redirect: 'follow', cache: 'no-store' }
+      });
+    })
+
+    // 3) Last resort, only when both readable attempts were blocked: an opaque
+    //    no-cors POST. We cannot see the reply, so this is trusted only while
+    //    the device reports itself online, and it is labelled NO-CORS on screen
+    //    so you know the delivery was never confirmed.
+    .then(function(r) {
+      if (r.state !== 'blocked') return r;
+      if (navigator.onLine === false) return r;
+      return fetch(cfg.url, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: bodyFor(item),
+        cache: 'no-store'
+      })
+        .then(function() { return { state: 'sent', method: 'NO-CORS' }; })
+        .catch(function(e) { return { state: 'blocked', detail: (e && e.message) || String(e) }; });
+    })
+
+    .then(function(r) {
+      lastDetail = (r.state === 'sent') ? '' : (r.state + ': ' + (r.detail || ''));
+      return r.state === 'sent' ? r.method : null;
+    });
+}
+
+// -- Queue flush ------------------------------------------------------
+function flush() {
+  // A caller arriving mid-sweep joins the one in flight rather than being
+  // told "nothing sent" - step() re-reads the queue, so it picks up new items.
+  if (flushPromise) return flushPromise;
+  if (!cfg || !cfg.url || !queue.length) return Promise.resolve(null);
+  var worked = null;
+
+  function step() {
+    if (!queue.length) return Promise.resolve();
+    var item = queue[0];
+    return deliver(item).then(function(method) {
+      if (method) {
+        worked = method;
+        // Only now does it leave the queue.
+        queue = queue.filter(function(q) { return q.id !== item.id; });
+        persistQueue();
+        return step();
+      }
+      item.tries = (item.tries || 0) + 1;
+      persistQueue();
+      return null; // stop this sweep; the interval picks it up again
+    });
+  }
+
+  flushPromise = step().then(function() {
+    flushPromise = null;
+    if (worked) setMethod(worked);
+    return worked;
+  }).catch(function() {
+    flushPromise = null;
+    return null;
+  });
+  return flushPromise;
+}
+
+// -- Capture flow -----------------------------------------------------
+function startListening() {
+  if (!cfg || !cfg.url) { openSetup('Set your endpoint first.'); return; }
+  if (isListening) return;
+  isListening = true;
+  show('listen');
+  if (typeof CreationVoiceHandler !== 'undefined') {
+    CreationVoiceHandler.postMessage('start');
+  } else {
+    toast('No voice bridge here - type the note instead.');
+  }
+}
+
+function stopListening() {
+  if (!isListening) return;
+  if (typeof CreationVoiceHandler !== 'undefined') {
+    CreationVoiceHandler.postMessage('stop');
+    // isListening clears in onPluginMessage when sttEnded arrives.
+  } else {
+    // Off-device: fake the callback so the flow stays testable.
+    isListening = false;
+    openReview('');
+  }
+}
+
+function openReview(text) {
+  editing = false;
+  actionIdx = 0;
+  $note.value = text || '';
+  renderActions();
+  show('review');
+  $note.blur();
+}
+
+function renderActions() {
+  for (var i = 0; i < actions.length; i++) {
+    $('act-' + actions[i]).classList.toggle('sel', i === actionIdx);
+  }
+  $('review-hint').textContent = editing ? 'click · send' : 'scroll · pick';
+}
+
+function runAction() {
+  var a = actions[actionIdx];
+  if (a === 'send')    return sendNote();
+  if (a === 'edit')    return beginEdit();
+  if (a === 'discard') return discardNote();
+}
+
+function beginEdit() {
+  editing = true;
+  renderActions();
+  $note.focus();
+  try {
+    $note.setSelectionRange($note.value.length, $note.value.length);
+  } catch (e) {}
+}
+
+function discardNote() {
+  editing = false;
+  $note.blur();
+  $note.value = '';
+  show('idle');
+  toast('Discarded.', 1400);
+}
+
+function sendNote() {
+  var text = ($note.value || '').trim();
+  if (!text) { discardNote(); return; }
+  if (text.length > MAX_NOTE) text = text.slice(0, MAX_NOTE);
+
+  editing = false;
+  $note.blur();
+
+  // Durable first, network second. Nothing can be lost from here on.
+  var id = genId();
+  queue.push({ id: id, note: text, ts: Date.now(), tries: 0 });
+  persistQueue();
+  $note.value = '';
+
+  showResult('pending');
+  flush().then(function(method) {
+    // The queue is the source of truth: this note is sent if and only if it
+    // is gone from it. A sweep already in flight may have delivered it.
+    var stillQueued = queue.some(function(q) { return q.id === id; });
+    if (stillQueued) {
+      showResult('queued');
+      say('Saved, will retry');
+    } else {
+      showResult('ok', method);
+      say('Sent');
+    }
+  });
+}
+
+function showResult(kind, method) {
+  var $wrap = $('tick-wrap'), $label = $('result-label'), $sub = $('result-sub');
+  clearTimeout(resultTimer);
+
+  if (kind === 'pending') {
+    $wrap.className = 'warn';
+    $label.textContent = 'SENDING';
+    $label.style.color = '#E0A800';
+    $sub.textContent = '';
+    show('result');
+    return;
+  }
+  if (kind === 'ok') {
+    $wrap.className = 'ok';
+    $label.textContent = 'SENT';
+    $label.style.color = '#2EA043';
+    $sub.textContent = method ? ('delivered via ' + method) : '';
+  } else {
+    $wrap.className = 'warn';
+    $label.textContent = 'QUEUED';
+    $label.style.color = '#E0A800';
+    $sub.textContent = lastDetail
+      ? ('Saved on device. ' + lastDetail)
+      : 'Saved on device. Will retry.';
+  }
+  show('result');
+  resultTimer = setTimeout(function() {
+    if (screenName === 'result') show('idle');
+  }, 1900);
+}
+
+// -- Setup screen -----------------------------------------------------
+function openSetup(err) {
+  $('in-url').value = (cfg && cfg.url) || '';
+  $('in-key').value = (cfg && cfg.key) || '';
+  $('setup-err').textContent = err || '';
+  show('setup');
+}
+
+function commitSetup() {
+  var url = ($('in-url').value || '').trim();
+  var key = ($('in-key').value || '').trim();
+  // https only, with the usual loopback carve-out so a local mock endpoint can
+  // be pointed at during testing. Chrome treats 127.0.0.1 as a secure context.
+  var isLoopback = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(url);
+  if (!/^https:\/\/.+/i.test(url) && !isLoopback) {
+    $('setup-err').textContent = 'URL must start with https://';
+    return;
+  }
+  if (url.indexOf('/exec') === -1) {
+    $('setup-err').textContent = 'That is not an /exec web app URL.';
+    return;
+  }
+  $('in-url').blur(); $('in-key').blur();
+  saveCfg({ url: url, key: key }).then(function() {
+    $('setup-err').textContent = '';
+    show('idle');
+    toast('Saved. Hold the PTT button to add a note.');
+    flush();
+  });
+}
+
+$('setup-save').addEventListener('pointerup', commitSetup);
+$('setup-cancel').addEventListener('pointerup', function() {
+  $('in-url').blur(); $('in-key').blur();
+  if (cfg && cfg.url) show('idle');
+  else $('setup-err').textContent = 'An endpoint is required.';
+});
+
+// Tapping a field must focus it so the R1 keyboard opens. No preventDefault.
+['in-url', 'in-key'].forEach(function(id) {
+  $(id).addEventListener('pointerup', function() { $(id).focus(); });
+});
+
+// -- Touch: tap actions, hold the screen for setup ---------------------
+actions.forEach(function(a, i) {
+  $('act-' + a).addEventListener('pointerup', function() {
+    actionIdx = i; renderActions(); runAction();
+  });
+});
+$note.addEventListener('pointerup', function() { beginEdit(); });
+
+// The hardware long press is taken by push-to-talk, so setup opens on a
+// touch-and-hold of the screen instead.
+function armHold(el) {
+  el.addEventListener('pointerdown', function() {
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(function() {
+      if (screenName === 'idle' || screenName === 'result') openSetup();
+    }, 900);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(ev) {
+    el.addEventListener(ev, function() { clearTimeout(holdTimer); });
+  });
+}
+armHold($('idle-body'));
+armHold($('topbar'));
+armHold($('result-body'));
+
+// -- Hardware events --------------------------------------------------
+window.addEventListener('longPressStart', function() {
+  if (screenName === 'setup') return;
+  if (screenName === 'review') {
+    // Long press on the review screen discards, per the button map.
+    suppressPTT = true;
+    discardNote();
+    return;
+  }
+  startListening();
+});
+
+window.addEventListener('longPressEnd', function() {
+  if (suppressPTT) { suppressPTT = false; return; }
+  stopListening();
+});
+
+window.addEventListener('sideClick', function() {
+  if (screenName === 'setup')  { commitSetup(); return; }
+  if (screenName === 'listen') { return; }              // release the button instead
+  if (screenName === 'review') { sendNote(); return; }  // click always sends
+  if (screenName === 'result') { show('idle'); return; }
+  if (!cfg || !cfg.url) { openSetup(); return; }
+  flush().then(function(m) {
+    if (m) toast('Queue cleared via ' + m, 1600);
+    else if (queue.length) toast(queue.length + ' still waiting.', 1600);
+  });
+});
+
+window.addEventListener('scrollUp', function() {
+  if (screenName !== 'review') return;
+  if (editing) { $note.scrollTop -= 24; return; }
+  if (actionIdx > 0) { actionIdx--; renderActions(); }
+});
+
+window.addEventListener('scrollDown', function() {
+  if (screenName !== 'review') return;
+  if (editing) { $note.scrollTop += 24; return; }
+  if (actionIdx < actions.length - 1) { actionIdx++; renderActions(); }
+});
+
+// -- Voice bridge callback --------------------------------------------
+window.onPluginMessage = function(data) {
+  if (!data) return;
+  if (data.type !== 'sttEnded') return;   // ignore LLM / TTS echoes
+  isListening = false;
+  var transcript = (data.transcript || '').trim();
+  if (!transcript) {
+    show('idle');
+    toast('Nothing heard. Hold and speak again.', 1800);
+    return;
+  }
+  openReview(transcript);
+};
+
+// -- Desktop keyboard fallbacks ---------------------------------------
+document.addEventListener('keydown', function(e) {
+  var ae = document.activeElement;
+  if (ae && /INPUT|TEXTAREA/.test(ae.tagName) && e.key !== 'Escape') return;
+  if (e.key === 'Escape')    window.dispatchEvent(new Event('sideClick'));
+  if (e.key === 'ArrowUp')   window.dispatchEvent(new Event('scrollUp'));
+  if (e.key === 'ArrowDown') window.dispatchEvent(new Event('scrollDown'));
+  if (e.key === ' ' && !e.repeat) {
+    e.preventDefault();
+    window.dispatchEvent(new Event('longPressStart'));
+  }
+});
+document.addEventListener('keyup', function(e) {
+  if (e.key === ' ') window.dispatchEvent(new Event('longPressEnd'));
+});
+
+// -- Boot -------------------------------------------------------------
+queue = loadQueue();
+renderBadge();
+renderMethod();
+
+(function boot() {
+  var fromQr = configFromHash();
+  if (fromQr) {
+    // Config arrived on the URL: persist it, then scrub it from the address.
+    saveCfg(fromQr).then(function() {
+      stripHash();
+      show('idle');
+      toast('Endpoint loaded from QR.', 2200);
+      flush();
+    });
+    return;
+  }
+  loadCfg().then(function(c) {
+    cfg = c;
+    if (!cfg || !cfg.url) { openSetup(); return; }
+    show('idle');
+    flush();
+  });
+})();
+
+// Retry while the app is open, and the moment connectivity returns.
+setInterval(function() { flush(); }, RETRY_MS);
+window.addEventListener('online', function() { flush(); });
+</script>
+</body>
+</html>
