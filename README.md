@@ -208,6 +208,43 @@ change and no redeploy of the creation needed.
 
 ---
 
+## Optional: moving notes into a structured sheet
+
+The receiver script above writes one flat row per note (timestamp, note text,
+source). If your actual spreadsheet has a separate inbox tab and a structured
+task list — ours does: an "R1 Inbox" tab that Task Drop writes to, and a
+"Tasks" tab with its own columns (Task, Priority, Booking Reference, Job
+Reference, ETC, Notes/Relevant Info, Task ID, Custom 1-3) — a voice transcript
+doesn't land in the right shape on its own.
+
+[`apps-script/MoveInboxToTasks.gs`](apps-script/MoveInboxToTasks.gs) is a
+separate, optional script for that gap. It runs on a 1-minute time-driven
+trigger, picks up any Inbox row still marked `Status = New`, best-effort
+splits the free text into the structured columns, appends it to Tasks, and
+marks the Inbox row `Moved` so it isn't copied twice. Inbox is never deleted
+from — it stays a permanent log of every note ever sent; Tasks accumulates the
+structured version.
+
+The splitting is a heuristic, not a parser: it looks for spoken patterns like
+"the job is X" / "the booking is X" (specifically requiring that linking verb,
+not just the word "job" anywhere — otherwise "there's a job with…" would
+false-match), a duration or a phrase like "after lunch" for ETC, and a few
+priority words. Anything it can't find is left as `-`. The full transcript is
+always preserved in Notes/Relevant Info regardless, so a wrong guess costs you
+a quick manual fix in Tasks, never the information itself.
+
+**Setup:** paste the file into the same Apps Script project that's bound to
+your spreadsheet (Extensions → Apps Script, from the sheet itself — this is a
+different project from the standalone `Code.gs` receiver above, since this one
+needs direct access to both tabs). Select `installR1ToTasksTrigger` in the
+function dropdown, click **Run**, approve the permissions prompt once. From
+then on it runs every minute on its own; re-running the installer later is
+safe, it replaces the old trigger rather than duplicating it. It also adds a
+**Task Drop** menu to the spreadsheet with a manual "Move now" item, for when
+you don't want to wait for the next minute.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
@@ -246,6 +283,7 @@ screen you can type into — enough to test the send path end to end.
 | `endpoint-test.html` | browser test harness for the endpoint |
 | `test/harness.mjs` | automated end-to-end test (headless Chrome, no npm install) |
 | `apps-script/Code.gs` | the Google Apps Script receiver |
+| `apps-script/MoveInboxToTasks.gs` | optional: auto-moves Inbox rows into a structured Tasks sheet |
 | `TESTING.md` | the full test plan |
 | `.github/workflows/pages.yml` | GitHub Pages deploy |
 
